@@ -379,6 +379,55 @@ pub trait VartimePrecomputedMultiscalarMul: Sized {
         K: IntoIterator<Item = Option<Self::Point>>;
 }
 
+/// A trait for variable-time multiscalar multiplication with precomputation
+/// which is efficient when the vector of scalars contains zeros.
+///
+/// A multiscalar multiplication with precomputation can be written as
+/// $$
+/// Q = B_1 + \cdots + b_m B_m,
+/// $$
+/// where the \\(B_i\\) are *static* points, for which precomputation
+/// is possible. Unlike the VartimePrecomputedMultiscalarMul trait, this trait does not
+/// support *dynamic* points \\(A_j\\) for which precomputation is not possible.
+///
+/// This trait has one method for performing this computation:
+///\
+/// * [`vartime_subset_multiscalar_mul`], which handles the case
+/// where some of the scalars are zero;
+///
+/// The lengths of the scalars iterator needs to be less than or equal to the # of static points
+/// passed in `new`.
+pub trait VartimePrecomputedSubsetMultiscalarMul: Sized {
+    /// The type of point to be multiplied, e.g., `RistrettoPoint`.
+    type Point: Clone;
+
+    /// Given the static points \\( B_i \\), perform precomputation
+    /// and return the precomputation data.
+    fn new<I>(static_points: I) -> Self
+        where
+            I: IntoIterator,
+            I::Item: Borrow<Self::Point>;
+
+    /// Given `static_scalars`, an iterator of public scalars
+    /// \\(b_i\\), compute
+    /// $$
+    /// Q = b_1 B_1 + \cdots + b_m B_m,
+    /// $$
+    /// where the \\(B_j\\) are the points that were supplied to `new`.
+    ///
+    /// It is an error to call this function with a scalar iterator larger in size that the static
+    /// points supplied to `new`. Of course, unlike in `VartimePrecomputedMultiscalarMul`, the iterator
+    /// can be over fewer things than the number of these static points.
+    ///
+    /// The trait bound aims for maximum flexibility: the input must be convertable to iterators
+    /// (`I: IntoIter`), and the iterator's items must be `(usize, S)` where `S: Borrow<Scalar>`,
+    /// to allow iterators returning either `Scalar`s or `&Scalar`s.
+    fn vartime_subset_multiscalar_mul<I, S>(&self, static_scalars: I) -> Self::Point
+        where
+            I: IntoIterator<Item = (usize, S)>,
+            S: Borrow<Scalar>;
+}
+
 // ------------------------------------------------------------------------
 // Private Traits
 // ------------------------------------------------------------------------
