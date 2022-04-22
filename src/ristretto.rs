@@ -188,7 +188,7 @@ use prelude::*;
 
 use scalar::Scalar;
 
-use traits::Identity;
+use traits::{Identity, VartimePrecomputedSubsetMultiscalarMul};
 #[cfg(any(feature = "alloc", feature = "std"))]
 use traits::{MultiscalarMul, VartimeMultiscalarMul, VartimePrecomputedMultiscalarMul};
 
@@ -965,6 +965,38 @@ impl VartimePrecomputedMultiscalarMul for VartimeRistrettoPrecomputation {
     }
 }
 
+/// Precomputation for variable-time multiscalar multiplication with `RistrettoPoint`s where some of
+/// the scalars can be zero. (VartimePrecomputedRistretto does not efficiently handle zero scalars.)
+// This wraps the inner implementation in a facade type so that we can
+// decouple stability of the inner type from the stability of the
+// outer type.
+#[cfg(feature = "alloc")]
+pub struct VartimeRistrettoSubsetPrecomputation(scalar_mul::precomputed_straus::VartimePrecomputedSubsetStraus);
+
+impl VartimePrecomputedSubsetMultiscalarMul for VartimeRistrettoSubsetPrecomputation {
+    type Point = RistrettoPoint;
+
+    fn new<I>(static_points: I) -> Self
+        where
+            I: IntoIterator,
+            I::Item: Borrow<Self::Point>
+    {
+        Self(
+            scalar_mul::precomputed_straus::VartimePrecomputedSubsetStraus::new(
+                static_points.into_iter().map(|P| P.borrow().0),
+            ),
+        )
+    }
+
+    fn vartime_subset_multiscalar_mul<I, S>(&self, static_scalars: I) -> Self::Point
+        where
+            I: IntoIterator<Item = (usize, S)>,
+            S: Borrow<Scalar>
+    {
+        RistrettoPoint(self.0.vartime_subset_multiscalar_mul(static_scalars))
+    }
+}
+
 impl RistrettoPoint {
     /// Compute \\(aA + bB\\) in variable time, where \\(B\\) is the
     /// Ristretto basepoint.
@@ -1103,6 +1135,9 @@ impl Zeroize for RistrettoPoint {
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashSet;
+    use std::iter::FromIterator;
+    use rand::prelude::IteratorRandom;
     use rand_core::OsRng;
 
     use scalar::Scalar;
@@ -1337,6 +1372,47 @@ mod test {
         for (P, P2_compressed) in points.iter().zip(compressed.iter()) {
             assert_eq!(*P2_compressed, (P + P).compress());
         }
+    }
+
+    #[test]
+    fn vartime_precomputed_subset_multiscalar() {
+        let mut rng = rand::thread_rng();
+
+        let B = &::constants::RISTRETTO_BASEPOINT_TABLE;
+
+        let total_size = 128;
+        let sample_size = total_size /2;
+        let mut all_scalars = (0..total_size)
+            .map(|_| Scalar::random(&mut rng))
+            .collect::<Vec<_>>();
+
+        let set_to_zero = HashSet::<usize>::from_iter((0..total_size).choose_multiple(&mut rand::thread_rng(), sample_size));
+
+        let mut subset_scalars: Vec<(usize, Scalar)> = Vec::with_capacity(sample_size);
+        for i in 0..total_size {
+             if set_to_zero.contains(&i) {
+                 all_scalars[i] = Scalar::zero();
+             } else {
+                 subset_scalars.push((i, all_scalars[i]));
+             }
+         }
+
+        let all_points = (0..total_size).map(|_| &Scalar::random(&mut rng) * B).collect::<Vec<_>>();
+
+        let correct = RistrettoPoint::vartime_multiscalar_mul(
+            all_scalars.iter(),
+            all_points.iter()
+        );
+
+        let precomputation = VartimeRistrettoSubsetPrecomputation::new(all_points.iter());
+
+        let hopefully_correct = precomputation.vartime_subset_multiscalar_mul(
+            subset_scalars,
+        );
+
+        println!("correct          : {:?}", correct.compress());
+        println!("hopefully-correct: {:?}", hopefully_correct.compress());
+        assert_eq!(correct, hopefully_correct);
     }
 
     #[test]
