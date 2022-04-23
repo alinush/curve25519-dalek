@@ -21,6 +21,7 @@ static BATCH_SIZES: [usize; 5] = [1, 2, 4, 8, 16];
 static MULTISCALAR_SIZES: [usize; 13] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 384, 512, 768, 1024];
 
 mod edwards_benches {
+    use criterion::Throughput;
     use super::*;
 
     use curve25519_dalek::edwards::EdwardsPoint;
@@ -37,18 +38,22 @@ mod edwards_benches {
         });
     }
 
-    fn consttime_fixed_base_scalar_mul(c: &mut Criterion) {
+    fn consttime_fixed_base_scalar_mul<M: Measurement>(g: &mut BenchmarkGroup<M>) {
         let B = &constants::ED25519_BASEPOINT_TABLE;
         let s = Scalar::from(897987897u64).invert();
-        c.bench_function("Constant-time fixed-base scalar mul", move |b| {
+
+        g.throughput(Throughput::Elements(1));
+        g.bench_function("Constant-time fixed-base scalar mul", move |b| {
             b.iter(|| B * &s)
         });
     }
 
-    fn consttime_variable_base_scalar_mul(c: &mut Criterion) {
+    fn consttime_variable_base_scalar_mul<M: Measurement>(g: &mut BenchmarkGroup<M>) {
         let B = &constants::ED25519_BASEPOINT_POINT;
         let s = Scalar::from(897987897u64).invert();
-        c.bench_function("Constant-time variable-base scalar mul", move |b| {
+
+        g.throughput(Throughput::Elements(1));
+        g.bench_function("Constant-time variable-base scalar mul", move |b| {
             b.iter(|| B * s)
         });
     }
@@ -65,19 +70,28 @@ mod edwards_benches {
         });
     }
 
+    fn single_scalar_multiplications(c: &mut Criterion) {
+        let mut group: BenchmarkGroup<_> = c.benchmark_group("Scalar multiplications");
+
+        consttime_fixed_base_scalar_mul(&mut group);
+        consttime_variable_base_scalar_mul(&mut group);
+
+        group.finish();
+    }
+
     criterion_group! {
         name = edwards_benches;
         config = Criterion::default();
         targets =
         compress,
         decompress,
-        consttime_fixed_base_scalar_mul,
-        consttime_variable_base_scalar_mul,
+        single_scalar_multiplications,
         vartime_double_base_scalar_mul,
     }
 }
 
 mod multiscalar_benches {
+    use criterion::Throughput;
     use super::*;
 
     use curve25519_dalek::edwards::EdwardsPoint;
@@ -104,6 +118,7 @@ mod multiscalar_benches {
 
     fn consttime_multiscalar_mul<M: Measurement>(c: &mut BenchmarkGroup<M>) {
         for multiscalar_size in &MULTISCALAR_SIZES {
+            c.throughput(Throughput::Elements(*multiscalar_size as u64));
             c.bench_with_input(
                 BenchmarkId::new(
                     "Constant-time variable-base multiscalar multiplication",
@@ -126,6 +141,7 @@ mod multiscalar_benches {
 
     fn vartime_multiscalar_mul<M: Measurement>(c: &mut BenchmarkGroup<M>) {
         for multiscalar_size in &MULTISCALAR_SIZES {
+            c.throughput(Throughput::Elements(*multiscalar_size as u64));
             c.bench_with_input(
                 BenchmarkId::new(
                     "Variable-time variable-base multiscalar multiplication",
@@ -150,6 +166,7 @@ mod multiscalar_benches {
 
     fn vartime_precomputed_pure_static<M: Measurement>(c: &mut BenchmarkGroup<M>) {
         for multiscalar_size in &MULTISCALAR_SIZES {
+            c.throughput(Throughput::Elements(*multiscalar_size as u64));
             c.bench_with_input(
                 BenchmarkId::new(
                     "Variable-time fixed-base multiscalar multiplication",
@@ -185,6 +202,7 @@ mod multiscalar_benches {
                 format!("(size: {:?}), ({:.0}pct dyn)", multiscalar_size, 100.0 * dynamic_fraction),
             );
 
+            c.throughput(Throughput::Elements(*multiscalar_size as u64));
             c.bench_with_input(bench_id, &multiscalar_size,
                 move |b, &&total_size| {
                     let dynamic_size = ((total_size as f64) * dynamic_fraction) as usize;
@@ -314,6 +332,7 @@ mod montgomery_benches {
 }
 
 mod scalar_benches {
+    use criterion::Throughput;
     use super::*;
 
     fn scalar_inversion(c: &mut Criterion) {
@@ -325,6 +344,7 @@ mod scalar_benches {
 
     fn batch_scalar_inversion<M: Measurement>(c: &mut BenchmarkGroup<M>) {
         for batch_size in &BATCH_SIZES {
+            c.throughput(Throughput::Elements(*batch_size as u64));
             c.bench_with_input(
                 BenchmarkId::new("Batch scalar inversion", *batch_size),
                 &batch_size,
