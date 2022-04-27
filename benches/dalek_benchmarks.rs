@@ -24,7 +24,8 @@ mod edwards_benches {
     use criterion::Throughput;
     use super::*;
 
-    use curve25519_dalek::edwards::EdwardsPoint;
+    use curve25519_dalek::edwards::{EdwardsBasepointTableRadix128, EdwardsBasepointTableRadix16, EdwardsBasepointTableRadix256, EdwardsBasepointTableRadix32, EdwardsBasepointTableRadix64, EdwardsPoint};
+    use curve25519_dalek::traits::BasepointTable;
 
     fn compress(c: &mut Criterion) {
         let B = &constants::ED25519_BASEPOINT_POINT;
@@ -38,12 +39,54 @@ mod edwards_benches {
         });
     }
 
+    fn consttime_fixed_base_scalar_mul_varradix<M: Measurement>(g: &mut BenchmarkGroup<M>) {
+        let P = &constants::ED25519_BASEPOINT_POINT;
+        let mut rng = thread_rng();
+
+        let table_radix16 = EdwardsBasepointTableRadix16::create(&P);
+        let table_radix32 = EdwardsBasepointTableRadix32::create(&P);
+        let table_radix64 = EdwardsBasepointTableRadix64::create(&P);
+        let table_radix128 = EdwardsBasepointTableRadix128::create(&P);
+        let table_radix256 = EdwardsBasepointTableRadix256::create(&P);
+
+        g.throughput(Throughput::Elements(1));
+        g.bench_function("Constant-time fixed-base scalar mul (radix 16)", move |b| {
+            let s = Scalar::random(&mut rng);
+            b.iter(|| &table_radix16 * &s)
+        });
+
+        g.throughput(Throughput::Elements(1));
+        g.bench_function("Constant-time fixed-base scalar mul (radix 32)", move |b| {
+            let s = Scalar::random(&mut rng);
+            b.iter(|| &table_radix32 * &s)
+        });
+
+        g.throughput(Throughput::Elements(1));
+        g.bench_function("Constant-time fixed-base scalar mul (radix 64)", move |b| {
+            let s = Scalar::random(&mut rng);
+            b.iter(|| &table_radix64 * &s)
+        });
+
+        g.throughput(Throughput::Elements(1));
+        g.bench_function("Constant-time fixed-base scalar mul (radix 128)", move |b| {
+            let s = Scalar::random(&mut rng);
+            b.iter(|| &table_radix128 * &s)
+        });
+
+        g.throughput(Throughput::Elements(1));
+        g.bench_function("Constant-time fixed-base scalar mul (radix 256)", move |b| {
+            let s = Scalar::random(&mut rng);
+            b.iter(|| &table_radix256 * &s)
+        });
+    }
+
     fn consttime_fixed_base_scalar_mul<M: Measurement>(g: &mut BenchmarkGroup<M>) {
         let B = &constants::ED25519_BASEPOINT_TABLE;
-        let s = Scalar::from(897987897u64).invert();
+        let mut rng = thread_rng();
 
         g.throughput(Throughput::Elements(1));
         g.bench_function("Constant-time fixed-base scalar mul", move |b| {
+            let s = Scalar::random(&mut rng);
             b.iter(|| B * &s)
         });
     }
@@ -75,6 +118,7 @@ mod edwards_benches {
 
         consttime_fixed_base_scalar_mul(&mut group);
         consttime_variable_base_scalar_mul(&mut group);
+        consttime_fixed_base_scalar_mul_varradix(&mut group);
 
         group.finish();
     }
@@ -112,9 +156,9 @@ mod multiscalar_benches {
             .collect()
     }
 
-    fn construct(n: usize) -> (Vec<Scalar>, Vec<EdwardsPoint>) {
-        (construct_scalars(n), construct_points(n))
-    }
+    // fn construct(n: usize) -> (Vec<Scalar>, Vec<EdwardsPoint>) {
+    //     (construct_scalars(n), construct_points(n))
+    // }
 
     fn consttime_multiscalar_mul<M: Measurement>(c: &mut BenchmarkGroup<M>) {
         for multiscalar_size in &MULTISCALAR_SIZES {
