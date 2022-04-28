@@ -308,21 +308,32 @@ mod multiscalar_benches {
 }
 
 mod ristretto_benches {
+    use criterion::Throughput;
     use super::*;
     use curve25519_dalek::ristretto::RistrettoPoint;
 
     fn compress(c: &mut Criterion) {
-        c.bench_function("RistrettoPoint compression", |b| {
+        let mut group: BenchmarkGroup<_> = c.benchmark_group("compression");
+
+        group.throughput(Throughput::Elements(1));
+        group.bench_function("RistrettoPoint compression", |b| {
             let B = &constants::RISTRETTO_BASEPOINT_POINT;
             b.iter(|| B.compress())
         });
+
+        group.finish();
     }
 
     fn decompress(c: &mut Criterion) {
-        c.bench_function("RistrettoPoint decompression", |b| {
+        let mut group: BenchmarkGroup<_> = c.benchmark_group("compression");
+
+        group.throughput(Throughput::Elements(1));
+        group.bench_function("RistrettoPoint decompression", |b| {
             let B_comp = &constants::RISTRETTO_BASEPOINT_COMPRESSED;
             b.iter(|| B_comp.decompress().unwrap())
         });
+
+        group.finish();
     }
 
     fn double_and_compress_batch<M: Measurement>(c: &mut BenchmarkGroup<M>) {
